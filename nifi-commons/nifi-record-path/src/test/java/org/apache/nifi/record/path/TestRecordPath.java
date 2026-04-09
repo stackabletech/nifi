@@ -42,6 +42,7 @@ import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -2050,6 +2051,7 @@ public class TestRecordPath {
 
                 final FieldValue fieldValue = evaluateSingleFieldValue("toDate(/date, \"yyyy-MM-dd'T'HH:mm:ss\")", record);
                 assertEquals(expectedValue, fieldValue.getValue());
+                assertEquals(RecordFieldType.TIMESTAMP.getDataType(), fieldValue.getField().getDataType());
             }
 
             @Test
@@ -2063,6 +2065,7 @@ public class TestRecordPath {
 
                 final FieldValue fieldValue = evaluateSingleFieldValue("toDate(/date, \"yyyy-MM-dd'T'HH:mm:ss\", 'GMT+8:00')", record);
                 assertEquals(expectedValue, fieldValue.getValue());
+                assertEquals(RecordFieldType.TIMESTAMP.getDataType(), fieldValue.getField().getDataType());
             }
 
             @Test
@@ -2075,6 +2078,7 @@ public class TestRecordPath {
 
                 final FieldValue fieldValue = evaluateSingleFieldValue("toDate(/date, /name)", record);
                 assertEquals(expectedValue, fieldValue.getValue());
+                assertEquals(RecordFieldType.TIMESTAMP.getDataType(), fieldValue.getField().getDataType());
             }
 
             @Test
@@ -2090,6 +2094,7 @@ public class TestRecordPath {
 
                 final FieldValue fieldValue = evaluateSingleFieldValue("toDate(/date, \"yyyy-MM-dd'T'HH:mm:ss\", /name)", record);
                 assertEquals(expectedValue, fieldValue.getValue());
+                assertEquals(RecordFieldType.TIMESTAMP.getDataType(), fieldValue.getField().getDataType());
             }
 
             @Test
@@ -2114,6 +2119,15 @@ public class TestRecordPath {
                     final FieldValue fieldValue = evaluateSingleFieldValue("toDate(/%s, 'yyyy-MM-dd')".formatted(fieldName), record);
                     assertEquals(record.getValue(fieldName), fieldValue.getValue());
                 }));
+            }
+
+            @Test
+            public void handlesLiteralValue() {
+                final Date expectedValue = new Date(LocalDate.parse("2017-10-20").atStartOfDay(TEST_ZONE_ID).toInstant().toEpochMilli());
+
+                final FieldValue fieldValue = evaluateSingleFieldValue("toDate('2017-10-20', 'yyyy-MM-dd')", record);
+                assertEquals(expectedValue, fieldValue.getValue());
+                assertEquals(RecordFieldType.TIMESTAMP.getDataType(), fieldValue.getField().getDataType());
             }
         }
 

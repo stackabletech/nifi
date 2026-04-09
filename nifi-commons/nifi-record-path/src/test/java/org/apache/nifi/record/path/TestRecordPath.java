@@ -2157,7 +2157,9 @@ public class TestRecordPath {
             public void decodesBytesAsStringUsingTheDefinedCharset() {
                 record.setValue("bytes", "Hello World!".getBytes(StandardCharsets.UTF_16));
 
-                assertEquals("Hello World!", evaluateSingleFieldValue("toString(/bytes, 'UTF-16')", record).getValue());
+                final FieldValue result = evaluateSingleFieldValue("toString(/bytes, 'UTF-16')", record);
+                assertEquals("Hello World!", result.getValue());
+                assertEquals(RecordFieldType.STRING.getDataType(), result.getField().getDataType());
             }
 
             @Test
@@ -2165,12 +2167,21 @@ public class TestRecordPath {
                 record.setValue("bytes", "Hello World!".getBytes(StandardCharsets.UTF_8));
                 record.setValue("name", "UTF-8");
 
-                assertEquals("Hello World!", evaluateSingleFieldValue("toString(/bytes, /name)", record).getValue());
+                final FieldValue result = evaluateSingleFieldValue("toString(/bytes, /name)", record);
+                assertEquals("Hello World!", result.getValue());
+                assertEquals(RecordFieldType.STRING.getDataType(), result.getField().getDataType());
             }
 
             @Test
             public void throwsExceptionWhenPassedAnNonExistingCharset() {
                 assertThrows(IllegalCharsetNameException.class, () -> evaluateSingleFieldValue("toString(/bytes, 'NOT A REAL CHARSET')", record));
+            }
+
+            @Test
+            public void handlesLiteralValue() {
+                final FieldValue result = evaluateSingleFieldValue("toString('literalValue', 'UTF-8')", record);
+                assertEquals("literalValue", result.getValue());
+                assertEquals(RecordFieldType.STRING.getDataType(), result.getField().getDataType());
             }
         }
 

@@ -218,3 +218,109 @@ export function isDefinedAndNotNull<T>() {
             })
         );
 }
+
+export interface Bundle {
+    artifact: string;
+    group: string;
+    version: string;
+}
+
+export type ConnectorActionName =
+    | 'START'
+    | 'STOP'
+    | 'CONFIGURE'
+    | 'DISCARD_WORKING_CONFIGURATION'
+    | 'PURGE_FLOWFILES'
+    | 'DRAIN_FLOWFILES'
+    | 'CANCEL_DRAIN_FLOWFILES'
+    | 'APPLY_UPDATES'
+    | 'DELETE';
+
+export interface ConnectorAction {
+    name: ConnectorActionName;
+    description: string;
+    allowed: boolean;
+    reasonNotAllowed?: string;
+}
+
+export enum ConnectorState {
+    STARTING = 'STARTING',
+    RUNNING = 'RUNNING',
+    STOPPING = 'STOPPING',
+    STOPPED = 'STOPPED',
+    DRAINING = 'DRAINING',
+    DISABLED = 'DISABLED',
+    PREPARING_FOR_UPDATE = 'PREPARING_FOR_UPDATE',
+    UPDATING = 'UPDATING',
+    UPDATE_FAILED = 'UPDATE_FAILED'
+}
+
+export interface ConnectorComponent {
+    id: string;
+    name: string;
+    type: string;
+    state: string;
+    bundle: Bundle;
+    validationErrors?: string[];
+    validationStatus?: string;
+    multipleVersionsAvailable?: boolean;
+    availableActions: ConnectorAction[];
+    managedProcessGroupId: string;
+}
+
+export interface ConnectorStatusSnapshot {
+    id: string;
+    groupId: string;
+    name: string;
+    type: string;
+    runStatus: string;
+    flowFilesSent: number;
+    bytesSent: number;
+    flowFilesReceived: number;
+    bytesReceived: number;
+    bytesRead: number;
+    bytesWritten: number;
+    sent: string;
+    received: string;
+    read: string;
+    written: string;
+    flowFilesQueued: number;
+    bytesQueued: number;
+    queued: string;
+    queuedCount: string;
+    queuedSize: string;
+    activeThreadCount: number;
+    idle?: boolean;
+    idleDurationMillis?: number;
+    idleDuration?: string;
+}
+
+export interface NodeConnectorStatusSnapshot {
+    nodeId: string;
+    address: string;
+    apiPort: number;
+    statusSnapshot: ConnectorStatusSnapshot;
+}
+
+export interface ConnectorStatus {
+    id: string;
+    groupId: string;
+    name: string;
+    type: string;
+    runStatus: string;
+    validationStatus: string;
+    statsLastRefreshed: string;
+    aggregateSnapshot: ConnectorStatusSnapshot;
+    nodeSnapshots?: NodeConnectorStatusSnapshot[];
+}
+
+export interface ConnectorEntity {
+    permissions: Permissions;
+    operatePermissions?: Permissions;
+    revision: Revision;
+    bulletins: BulletinEntity[];
+    id: string;
+    uri: string;
+    status: ConnectorStatus;
+    component: ConnectorComponent;
+}

@@ -19,7 +19,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideMockActions } from '@ngrx/effects/testing';
 import { Action } from '@ngrx/store';
 import { Router } from '@angular/router';
-import { Observable, of, Subject, throwError } from 'rxjs';
+import { firstValueFrom, Observable, of, Subject, throwError } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentType } from '@nifi/shared';
 import { ConnectorCanvasEffects } from './connector-canvas.effects';
@@ -28,18 +28,21 @@ import { ErrorHelper } from '../../../../service/error-helper.service';
 import { ErrorContextKey } from '../../../../state/error';
 import { provideMockStore, MockStore } from '@ngrx/store/testing';
 import {
+    deselectAllComponents,
     enterProcessGroup,
     leaveProcessGroup,
     loadConnectorFlow,
     loadConnectorFlowComplete,
     loadConnectorFlowFailure,
     loadConnectorFlowSuccess,
-    setSkipTransform
+    navigateWithoutTransform,
+    selectComponents
 } from './connector-canvas.actions';
 import {
     selectConnectorIdFromRoute,
     selectParentProcessGroupId,
-    selectProcessGroupId
+    selectProcessGroupId,
+    selectProcessGroupIdFromRoute
 } from './connector-canvas.selectors';
 import type { Mock } from 'vitest';
 
@@ -50,6 +53,7 @@ describe('ConnectorCanvasEffects', () => {
             connectorId?: string | null;
             parentProcessGroupId?: string | null;
             processGroupId?: string | null;
+            processGroupIdFromRoute?: string | null;
         } = {}
     ) {
         let actions$: Observable<Action>;
@@ -58,6 +62,8 @@ describe('ConnectorCanvasEffects', () => {
         const parentProcessGroupId =
             options.parentProcessGroupId !== undefined ? options.parentProcessGroupId : 'parent-pg';
         const processGroupId = options.processGroupId !== undefined ? options.processGroupId : 'child-pg';
+        const processGroupIdFromRoute =
+            options.processGroupIdFromRoute !== undefined ? options.processGroupIdFromRoute : processGroupId;
 
         // Mock services
         const mockConnectorService = {
@@ -82,7 +88,8 @@ describe('ConnectorCanvasEffects', () => {
                     selectors: [
                         { selector: selectConnectorIdFromRoute, value: connectorId },
                         { selector: selectParentProcessGroupId, value: parentProcessGroupId },
-                        { selector: selectProcessGroupId, value: processGroupId }
+                        { selector: selectProcessGroupId, value: processGroupId },
+                        { selector: selectProcessGroupIdFromRoute, value: processGroupIdFromRoute }
                     ]
                 }),
                 { provide: ConnectorService, useValue: mockConnectorService },
@@ -111,264 +118,307 @@ describe('ConnectorCanvasEffects', () => {
     });
 
     describe('loadConnectorFlow$', () => {
-        it('should call getConnectorFlow and dispatch loadConnectorFlowSuccess', () =>
-            new Promise<void>((resolve) => {
-                setup().then(({ effects, actions$, mockConnectorService }) => {
-                    const flowResponse = {
-                        processGroupFlow: {
-                            id: 'pg-123',
-                            parentGroupId: 'parent-456',
-                            breadcrumb: null,
-                            flow: {
-                                labels: [{ id: 'l1' }],
-                                funnels: [],
-                                inputPorts: [],
-                                outputPorts: [],
-                                remoteProcessGroups: [],
-                                processGroups: [],
-                                processors: [],
-                                connections: []
-                            }
-                        }
-                    };
-                    (mockConnectorService.getConnectorFlow as Mock).mockReturnValue(of(flowResponse));
-                    actions$(
-                        of(
-                            loadConnectorFlow({
-                                connectorId: 'conn-a',
-                                processGroupId: 'pg-in'
-                            })
-                        )
-                    );
+        it('should call getConnectorFlow and dispatch loadConnectorFlowSuccess', async () => {
+            const { effects, actions$, mockConnectorService } = await setup();
+            const flowResponse = {
+                processGroupFlow: {
+                    id: 'pg-123',
+                    parentGroupId: 'parent-456',
+                    breadcrumb: null,
+                    flow: {
+                        labels: [{ id: 'l1' }],
+                        funnels: [],
+                        inputPorts: [],
+                        outputPorts: [],
+                        remoteProcessGroups: [],
+                        processGroups: [],
+                        processors: [],
+                        connections: []
+                    }
+                }
+            };
+            (mockConnectorService.getConnectorFlow as Mock).mockReturnValue(of(flowResponse));
+            actions$(
+                of(
+                    loadConnectorFlow({
+                        connectorId: 'conn-a',
+                        processGroupId: 'pg-in'
+                    })
+                )
+            );
 
-                    effects.loadConnectorFlow$.subscribe((action) => {
-                        expect(mockConnectorService.getConnectorFlow).toHaveBeenCalledWith('conn-a', 'pg-in');
-                        expect(action).toEqual(
-                            loadConnectorFlowSuccess({
-                                connectorId: 'conn-a',
-                                processGroupId: 'pg-123',
-                                parentProcessGroupId: 'parent-456',
-                                breadcrumb: null,
-                                labels: [{ id: 'l1' }],
-                                funnels: [],
-                                inputPorts: [],
-                                outputPorts: [],
-                                remoteProcessGroups: [],
-                                processGroups: [],
-                                processors: [],
-                                connections: []
-                            })
-                        );
-                        resolve();
-                    });
-                });
-            }));
+            const action = await firstValueFrom(effects.loadConnectorFlow$);
+            expect(mockConnectorService.getConnectorFlow).toHaveBeenCalledWith('conn-a', 'pg-in');
+            expect(action).toEqual(
+                loadConnectorFlowSuccess({
+                    connectorId: 'conn-a',
+                    processGroupId: 'pg-123',
+                    parentProcessGroupId: 'parent-456',
+                    breadcrumb: null,
+                    labels: [{ id: 'l1' }],
+                    funnels: [],
+                    inputPorts: [],
+                    outputPorts: [],
+                    remoteProcessGroups: [],
+                    processGroups: [],
+                    processors: [],
+                    connections: []
+                })
+            );
+        });
 
-        it('should default flow collections when processGroupFlow.flow is missing', () =>
-            new Promise<void>((resolve) => {
-                setup().then(({ effects, actions$, mockConnectorService }) => {
-                    const flowResponse = {
-                        processGroupFlow: {
-                            id: 'pg-123',
-                            parentGroupId: null,
-                            breadcrumb: null
-                        }
-                    };
-                    (mockConnectorService.getConnectorFlow as Mock).mockReturnValue(of(flowResponse));
-                    actions$(
-                        of(
-                            loadConnectorFlow({
-                                connectorId: 'conn-a',
-                                processGroupId: 'pg-in'
-                            })
-                        )
-                    );
+        it('should default flow collections when processGroupFlow.flow is missing', async () => {
+            const { effects, actions$, mockConnectorService } = await setup();
+            const flowResponse = {
+                processGroupFlow: {
+                    id: 'pg-123',
+                    parentGroupId: null,
+                    breadcrumb: null
+                }
+            };
+            (mockConnectorService.getConnectorFlow as Mock).mockReturnValue(of(flowResponse));
+            actions$(
+                of(
+                    loadConnectorFlow({
+                        connectorId: 'conn-a',
+                        processGroupId: 'pg-in'
+                    })
+                )
+            );
 
-                    effects.loadConnectorFlow$.subscribe((action) => {
-                        expect(action).toEqual(
-                            loadConnectorFlowSuccess({
-                                connectorId: 'conn-a',
-                                processGroupId: 'pg-123',
-                                parentProcessGroupId: null,
-                                breadcrumb: null,
-                                labels: [],
-                                funnels: [],
-                                inputPorts: [],
-                                outputPorts: [],
-                                remoteProcessGroups: [],
-                                processGroups: [],
-                                processors: [],
-                                connections: []
-                            })
-                        );
-                        resolve();
-                    });
-                });
-            }));
+            const action = await firstValueFrom(effects.loadConnectorFlow$);
+            expect(action).toEqual(
+                loadConnectorFlowSuccess({
+                    connectorId: 'conn-a',
+                    processGroupId: 'pg-123',
+                    parentProcessGroupId: null,
+                    breadcrumb: null,
+                    labels: [],
+                    funnels: [],
+                    inputPorts: [],
+                    outputPorts: [],
+                    remoteProcessGroups: [],
+                    processGroups: [],
+                    processors: [],
+                    connections: []
+                })
+            );
+        });
 
-        it('should dispatch loadConnectorFlowFailure when getConnectorFlow errors', () =>
-            new Promise<void>((resolve) => {
-                setup().then(({ effects, actions$, mockConnectorService, mockErrorHelper }) => {
-                    const errorResponse = new HttpErrorResponse({ error: 'Failed', status: 500, statusText: 'ISE' });
-                    (mockConnectorService.getConnectorFlow as Mock).mockReturnValue(throwError(() => errorResponse));
-                    actions$(
-                        of(
-                            loadConnectorFlow({
-                                connectorId: 'conn-a',
-                                processGroupId: 'pg-in'
-                            })
-                        )
-                    );
+        it('should dispatch loadConnectorFlowFailure when getConnectorFlow errors', async () => {
+            const { effects, actions$, mockConnectorService, mockErrorHelper } = await setup();
+            const errorResponse = new HttpErrorResponse({ error: 'Failed', status: 500, statusText: 'ISE' });
+            (mockConnectorService.getConnectorFlow as Mock).mockReturnValue(throwError(() => errorResponse));
+            actions$(
+                of(
+                    loadConnectorFlow({
+                        connectorId: 'conn-a',
+                        processGroupId: 'pg-in'
+                    })
+                )
+            );
 
-                    effects.loadConnectorFlow$.subscribe((action) => {
-                        expect(mockErrorHelper.getErrorString).toHaveBeenCalledWith(errorResponse);
-                        expect(action).toEqual(
-                            loadConnectorFlowFailure({
-                                errorContext: {
-                                    errors: ['Error message'],
-                                    context: ErrorContextKey.CONNECTORS
-                                }
-                            })
-                        );
-                        resolve();
-                    });
-                });
-            }));
+            const action = await firstValueFrom(effects.loadConnectorFlow$);
+            expect(mockErrorHelper.getErrorString).toHaveBeenCalledWith(errorResponse);
+            expect(action).toEqual(
+                loadConnectorFlowFailure({
+                    errorContext: {
+                        errors: ['Error message'],
+                        context: ErrorContextKey.CONNECTORS
+                    }
+                })
+            );
+        });
     });
 
     describe('loadConnectorFlowComplete$', () => {
-        it('should dispatch loadConnectorFlowComplete on loadConnectorFlowSuccess', () =>
-            new Promise<void>((resolve) => {
-                setup().then(({ effects, actions$ }) => {
-                    actions$(
-                        of(
-                            loadConnectorFlowSuccess({
-                                connectorId: 'c1',
-                                processGroupId: 'pg1',
-                                parentProcessGroupId: null,
-                                breadcrumb: null,
-                                labels: [],
-                                funnels: [],
-                                inputPorts: [],
-                                outputPorts: [],
-                                remoteProcessGroups: [],
-                                processGroups: [],
-                                processors: [],
-                                connections: []
-                            })
-                        )
-                    );
+        it('should dispatch loadConnectorFlowComplete on loadConnectorFlowSuccess', async () => {
+            const { effects, actions$ } = await setup();
+            actions$(
+                of(
+                    loadConnectorFlowSuccess({
+                        connectorId: 'c1',
+                        processGroupId: 'pg1',
+                        parentProcessGroupId: null,
+                        breadcrumb: null,
+                        labels: [],
+                        funnels: [],
+                        inputPorts: [],
+                        outputPorts: [],
+                        remoteProcessGroups: [],
+                        processGroups: [],
+                        processors: [],
+                        connections: []
+                    })
+                )
+            );
 
-                    effects.loadConnectorFlowComplete$.subscribe((action) => {
-                        expect(action).toEqual(loadConnectorFlowComplete());
-                        resolve();
-                    });
-                });
-            }));
+            const action = await firstValueFrom(effects.loadConnectorFlowComplete$);
+            expect(action).toEqual(loadConnectorFlowComplete());
+        });
     });
 
     describe('enterProcessGroup$', () => {
-        it('should navigate to the child process group canvas URL', () =>
-            new Promise<void>((resolve) => {
-                setup({ connectorId: 'my-connector' }).then(({ effects, actions$, mockRouter }) => {
-                    actions$(
-                        of(
-                            enterProcessGroup({
-                                request: { id: 'child-pg-99' }
-                            })
-                        )
-                    );
+        it('should navigate to the child process group canvas URL', async () => {
+            const { effects, actions$, mockRouter } = await setup({ connectorId: 'my-connector' });
+            actions$(
+                of(
+                    enterProcessGroup({
+                        request: { id: 'child-pg-99' }
+                    })
+                )
+            );
 
-                    effects.enterProcessGroup$.subscribe(() => {
-                        expect(mockRouter.navigate).toHaveBeenCalledWith([
-                            '/connectors',
-                            'my-connector',
-                            'canvas',
-                            'child-pg-99'
-                        ]);
-                        resolve();
-                    });
-                });
-            }));
+            await firstValueFrom(effects.enterProcessGroup$);
+            expect(mockRouter.navigate).toHaveBeenCalledWith(['/connectors', 'my-connector', 'canvas', 'child-pg-99']);
+        });
     });
 
     describe('leaveProcessGroup$', () => {
-        it('should navigate to parent, then after loadConnectorFlowComplete dispatch setSkipTransform and replaceUrl navigate', () =>
-            new Promise<void>((resolve) => {
-                setup({
-                    connectorId: 'conn-x',
-                    parentProcessGroupId: 'parent-pg',
-                    processGroupId: 'child-pg'
-                }).then(({ effects, actions$, mockRouter, store }) => {
-                    const dispatchSpy = vi.spyOn(store, 'dispatch');
-                    const actionSubject = new Subject<Action>();
-                    actions$(actionSubject.asObservable());
+        it('should navigate to parent, then after loadConnectorFlowComplete dispatch navigateWithoutTransform', async () => {
+            const { effects, actions$, mockRouter } = await setup({
+                connectorId: 'conn-x',
+                parentProcessGroupId: 'parent-pg',
+                processGroupId: 'child-pg'
+            });
+            const actionSubject = new Subject<Action>();
+            actions$(actionSubject.asObservable());
 
-                    effects.leaveProcessGroup$.subscribe({
-                        complete: () => {
-                            expect(mockRouter.navigate).toHaveBeenNthCalledWith(1, [
-                                '/connectors',
-                                'conn-x',
-                                'canvas',
-                                'parent-pg'
-                            ]);
-                            expect(dispatchSpy).toHaveBeenCalledWith(setSkipTransform({ skipTransform: true }));
-                            expect(mockRouter.navigate).toHaveBeenNthCalledWith(
-                                2,
-                                [
-                                    '/connectors',
-                                    'conn-x',
-                                    'canvas',
-                                    'parent-pg',
-                                    ComponentType.ProcessGroup,
-                                    'child-pg'
-                                ],
-                                { replaceUrl: true }
-                            );
-                            resolve();
+            const resultPromise = firstValueFrom(effects.leaveProcessGroup$);
+
+            actionSubject.next(leaveProcessGroup());
+            actionSubject.next(loadConnectorFlowComplete());
+            actionSubject.complete();
+
+            const action = await resultPromise;
+            expect(mockRouter.navigate).toHaveBeenCalledWith(['/connectors', 'conn-x', 'canvas', 'parent-pg']);
+            expect(action).toEqual(
+                navigateWithoutTransform({
+                    url: ['/connectors', 'conn-x', 'canvas', 'parent-pg', ComponentType.ProcessGroup, 'child-pg']
+                })
+            );
+        });
+
+        it('should not navigate when parent process group id is null', async () => {
+            const { effects, actions$, mockRouter } = await setup({
+                connectorId: 'conn-x',
+                parentProcessGroupId: null,
+                processGroupId: 'child-pg'
+            });
+            actions$(of(leaveProcessGroup()));
+
+            await expect(firstValueFrom(effects.leaveProcessGroup$)).rejects.toThrow();
+            expect(mockRouter.navigate).not.toHaveBeenCalled();
+        });
+
+        it('should not navigate when current process group id is null', async () => {
+            const { effects, actions$, mockRouter } = await setup({
+                connectorId: 'conn-x',
+                parentProcessGroupId: 'parent-pg',
+                processGroupId: null
+            });
+            actions$(of(leaveProcessGroup()));
+
+            await expect(firstValueFrom(effects.leaveProcessGroup$)).rejects.toThrow();
+            expect(mockRouter.navigate).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('selectComponents$', () => {
+        it('should dispatch deselectAllComponents when components array is empty', async () => {
+            const { effects, actions$ } = await setup({
+                connectorId: 'conn-1',
+                processGroupIdFromRoute: 'pg-root'
+            });
+            actions$(
+                of(
+                    selectComponents({
+                        request: {
+                            components: []
                         }
-                    });
+                    })
+                )
+            );
 
-                    actionSubject.next(leaveProcessGroup());
-                    actionSubject.next(loadConnectorFlowComplete());
-                    actionSubject.complete();
-                });
-            }));
+            const action = await firstValueFrom(effects.selectComponents$);
+            expect(action).toEqual(deselectAllComponents());
+        });
 
-        it('should not navigate when parent process group id is null', () =>
-            new Promise<void>((resolve) => {
-                setup({
-                    connectorId: 'conn-x',
-                    parentProcessGroupId: null,
-                    processGroupId: 'child-pg'
-                }).then(({ effects, actions$, mockRouter }) => {
-                    actions$(of(leaveProcessGroup()));
-
-                    effects.leaveProcessGroup$.subscribe({
-                        complete: () => {
-                            expect(mockRouter.navigate).not.toHaveBeenCalled();
-                            resolve();
+        it('should dispatch navigateWithoutTransform with single component URL', async () => {
+            const { effects, actions$ } = await setup({
+                connectorId: 'conn-1',
+                processGroupIdFromRoute: 'pg-root'
+            });
+            actions$(
+                of(
+                    selectComponents({
+                        request: {
+                            components: [{ id: 'proc-1', componentType: ComponentType.Processor }]
                         }
-                    });
-                });
-            }));
+                    })
+                )
+            );
 
-        it('should not navigate when current process group id is null', () =>
-            new Promise<void>((resolve) => {
-                setup({
-                    connectorId: 'conn-x',
-                    parentProcessGroupId: 'parent-pg',
-                    processGroupId: null
-                }).then(({ effects, actions$, mockRouter }) => {
-                    actions$(of(leaveProcessGroup()));
+            const action = await firstValueFrom(effects.selectComponents$);
+            expect(action).toEqual(
+                navigateWithoutTransform({
+                    url: ['/connectors', 'conn-1', 'canvas', 'pg-root', ComponentType.Processor, 'proc-1']
+                })
+            );
+        });
 
-                    effects.leaveProcessGroup$.subscribe({
-                        complete: () => {
-                            expect(mockRouter.navigate).not.toHaveBeenCalled();
-                            resolve();
+        it('should dispatch navigateWithoutTransform with bulk URL for multiple components', async () => {
+            const { effects, actions$ } = await setup({
+                connectorId: 'conn-1',
+                processGroupIdFromRoute: 'pg-root'
+            });
+            actions$(
+                of(
+                    selectComponents({
+                        request: {
+                            components: [
+                                { id: 'proc-1', componentType: ComponentType.Processor },
+                                { id: 'conn-2', componentType: ComponentType.Connection }
+                            ]
                         }
-                    });
-                });
-            }));
+                    })
+                )
+            );
+
+            const action = await firstValueFrom(effects.selectComponents$);
+            expect(action).toEqual(
+                navigateWithoutTransform({
+                    url: ['/connectors', 'conn-1', 'canvas', 'pg-root', 'bulk', 'proc-1,conn-2']
+                })
+            );
+        });
+    });
+
+    describe('deselectAllComponents$', () => {
+        it('should dispatch navigateWithoutTransform with base canvas URL', async () => {
+            const { effects, actions$ } = await setup({
+                connectorId: 'conn-1',
+                processGroupIdFromRoute: 'pg-root'
+            });
+            actions$(of(deselectAllComponents()));
+
+            const action = await firstValueFrom(effects.deselectAllComponents$);
+            expect(action).toEqual(
+                navigateWithoutTransform({
+                    url: ['/connectors', 'conn-1', 'canvas', 'pg-root']
+                })
+            );
+        });
+    });
+
+    describe('navigateWithoutTransform$', () => {
+        it('should call router.navigate with replaceUrl', async () => {
+            const { effects, actions$, mockRouter } = await setup();
+            const url = ['/connectors', 'conn-1', 'canvas', 'pg-root', 'Processor', 'proc-1'];
+            actions$(of(navigateWithoutTransform({ url })));
+
+            await firstValueFrom(effects.navigateWithoutTransform$);
+            expect(mockRouter.navigate).toHaveBeenCalledWith(url, { replaceUrl: true });
+        });
     });
 });

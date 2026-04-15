@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -162,15 +163,23 @@ public class ParameterProviderSecretsManager implements SecretsManager {
                 continue;
             }
 
-            final List<String> secretNames = new ArrayList<>();
-            references.forEach(ref -> secretNames.add(ref.getFullyQualifiedName()));
-            final List<Secret> retrievedSecrets = provider.getSecrets(secretNames);
-            final Map<String, Secret> secretsByName = retrievedSecrets.stream()
-                .collect(Collectors.toMap(Secret::getFullyQualifiedName, Function.identity()));
+            final List<String> secretNames = references.stream()
+                .map(SecretReference::getFullyQualifiedName)
+                .filter(Objects::nonNull)
+                .toList();
+            if (!secretNames.isEmpty()) {
+                final List<Secret> retrievedSecrets = provider.getSecrets(secretNames);
+                final Map<String, Secret> secretsByName = retrievedSecrets.stream()
+                    .collect(Collectors.toMap(Secret::getFullyQualifiedName, Function.identity()));
 
-            for (final SecretReference secretReference : references) {
-                final Secret secret = secretsByName.get(secretReference.getFullyQualifiedName());
-                secrets.put(secretReference, secret);
+                for (final SecretReference secretReference : references) {
+                    final Secret secret = secretsByName.get(secretReference.getFullyQualifiedName());
+                    secrets.put(secretReference, secret);
+                }
+            } else {
+                for (final SecretReference secretReference : references) {
+                    secrets.put(secretReference, null);
+                }
             }
         }
 
@@ -211,19 +220,27 @@ public class ParameterProviderSecretsManager implements SecretsManager {
                 continue;
             }
 
-            final List<String> secretNames = new ArrayList<>();
-            references.forEach(ref -> secretNames.add(ref.getFullyQualifiedName()));
-            final List<Secret> retrievedSecrets = provider.getSecrets(secretNames);
-            final Map<String, Secret> secretsByName = retrievedSecrets.stream()
-                .collect(Collectors.toMap(Secret::getFullyQualifiedName, Function.identity()));
+            final List<String> secretNames = references.stream()
+                .map(SecretReference::getFullyQualifiedName)
+                .filter(Objects::nonNull)
+                .toList();
+            if (!secretNames.isEmpty()) {
+                final List<Secret> retrievedSecrets = provider.getSecrets(secretNames);
+                final Map<String, Secret> secretsByName = retrievedSecrets.stream()
+                    .collect(Collectors.toMap(Secret::getFullyQualifiedName, Function.identity()));
 
-            for (final SecretReference secretReference : references) {
-                final String fqn = secretReference.getFullyQualifiedName();
-                final Secret secret = secretsByName.get(fqn);
-                results.put(secretReference, secret);
+                for (final SecretReference secretReference : references) {
+                    final String fqn = secretReference.getFullyQualifiedName();
+                    final Secret secret = secretsByName.get(fqn);
+                    results.put(secretReference, secret);
 
-                if (secret != null && fqn != null) {
-                    cacheSecret(fqn, secret);
+                    if (secret != null && fqn != null) {
+                        cacheSecret(fqn, secret);
+                    }
+                }
+            } else {
+                for (final SecretReference secretReference : references) {
+                    results.put(secretReference, null);
                 }
             }
         }

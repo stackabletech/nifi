@@ -15,22 +15,28 @@
  * limitations under the License.
  */
 
-import { Component, inject } from '@angular/core';
-import { selectBreadcrumbs, selectCurrentProcessGroupId } from '../../../state/flow/flow.selectors';
+import { Component, computed, inject, input } from '@angular/core';
 import { Store } from '@ngrx/store';
-import { CanvasState } from '../../../state';
-import { Breadcrumbs } from '../../../../../ui/common/breadcrumbs/breadcrumbs.component';
 import { AsyncPipe } from '@angular/common';
+import { Breadcrumbs, BreadcrumbRouteGenerator } from '../../../../../ui/common/breadcrumbs/breadcrumbs.component';
+import { selectBreadcrumbs, selectProcessGroupId } from '../../../state/connector-canvas/connector-canvas.selectors';
 
 @Component({
-    selector: 'fd-footer',
+    selector: 'connector-canvas-footer',
     templateUrl: './footer.component.html',
     imports: [Breadcrumbs, AsyncPipe],
     styleUrls: ['./footer.component.scss']
 })
-export class FooterComponent {
-    private store = inject<Store<CanvasState>>(Store);
+export class ConnectorCanvasFooterComponent {
+    private store = inject(Store);
+
+    connectorId = input.required<string>();
 
     breadcrumbs$ = this.store.select(selectBreadcrumbs);
-    currentProcessGroupId$ = this.store.select(selectCurrentProcessGroupId);
+    currentProcessGroupId$ = this.store.select(selectProcessGroupId);
+
+    routeGenerator = computed<BreadcrumbRouteGenerator>(() => {
+        const id = this.connectorId();
+        return (processGroupId: string) => ['/connectors', id, 'canvas', processGroupId];
+    });
 }

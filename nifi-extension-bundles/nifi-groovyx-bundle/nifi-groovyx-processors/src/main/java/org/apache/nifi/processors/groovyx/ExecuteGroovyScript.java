@@ -450,10 +450,11 @@ public class ExecuteGroovyScript extends AbstractProcessor {
         //create wrapped session to control list of newly created and files got from this session.
         //so transfer original input to failure will be possible
         GroovyProcessSessionWrap session = new GroovyProcessSessionWrap(processSession, toFailureOnError);
+        FlowFile flowFile = null;
         if (toFailureOnError) {
             // FlowFile must be read otherwise if there is a failure before the script is executed, a
             // never ending loop occurs since the GroovyProcessSessionWrap has nothing to send to the failure relationship.
-            FlowFile flowFile = session.get();
+            flowFile = session.get();
             if (flowFile == null) {
                 return;
             }
@@ -466,7 +467,7 @@ public class ExecuteGroovyScript extends AbstractProcessor {
 
         try {
             Script script = getGroovyScript(); //compilation must be moved to validation
-            Map bindings = script.getBinding().getVariables();
+            Map<String, Object> bindings = script.getBinding().getVariables();
 
             bindings.clear();
             Map<String, String> attributes = new HashMap<>();
@@ -510,6 +511,11 @@ public class ExecuteGroovyScript extends AbstractProcessor {
             bindings.put("RecordReader", recordReader);
             bindings.put("RecordWriter", recordSetWriter);
 
+            // Must perform rollback to allow the script access to the FlowFile.
+            if (flowFile != null) {
+                session.rollback();
+            }
+
             script.run();
             bindings.clear();
 
@@ -519,6 +525,8 @@ public class ExecuteGroovyScript extends AbstractProcessor {
             getLogger().error(t.toString(), t);
             onFailSQL(sql);
             if (toFailureOnError) {
+                // FlowFile must be retrieved in order send to the failure relationship as it may not have been retrieved in the script.
+                session.get();
                 //transfer all received to failure with two new attributes: ERROR_MESSAGE and ERROR_STACKTRACE.
                 session.revertReceivedTo(REL_FAILURE, StackTraceUtils.deepSanitize(t));
             } else {
@@ -590,7 +598,7 @@ public class ExecuteGroovyScript extends AbstractProcessor {
 
     /** simple HashMap with exception on access of non-existent key */
     private static class AccessMap extends HashMap<String, Object> {
-        private String parentKey;
+        private final String parentKey;
         AccessMap(String parentKey) {
             this.parentKey = parentKey;
         }
